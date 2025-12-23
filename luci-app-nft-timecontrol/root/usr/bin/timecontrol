@@ -124,7 +124,6 @@ stop_timecontrol() {
         for chain in "ip" "bridge" "ip6"; do
             if nft_table_exists "$chain filter"; then
                     nft flush chain "$chain" filter input
-                    nft flush chain "$chain" filter forward
                 if nft_set_exists "$chain filter" "${list_type}_list"; then
                     nft delete set "$chain" filter "${list_type}_list"
                 fi
@@ -133,10 +132,8 @@ stop_timecontrol() {
         done
         dbg "All nftables rules have been cleared."
     else
-        iptables -D INPUT -m set --match-set timecontrol_blacklist src -j DROP 2>/dev/null
-        ip6tables -D INPUT -m set --match-set timecontrol_blacklistv6 src -j DROP 2>/dev/null
-        iptables -D FORWARD -m set --match-set timecontrol_blacklist src -j DROP 2>/dev/null
-        ip6tables -D FORWARD -m set --match-set timecontrol_blacklistv6 src -j DROP 2>/dev/null
+        iptables -t mangle -D PREROUTING -m set --match-set timecontrol_blacklist src -j DROP 2>/dev/null
+        ip6tables -t mangle -D PREROUTING -m set --match-set timecontrol_blacklistv6 src -j DROP 2>/dev/null
         ipset flush timecontrol_blacklist 2>/dev/null
         ipset flush timecontrol_blacklistv6 2>/dev/null
         ipset destroy timecontrol_blacklist 2>/dev/null
@@ -172,27 +169,18 @@ init_timecontrol() {
             fi
             
             if ! nft list chain "$chain" filter input 2>/dev/null; then
-                nft add chain "$chain" filter input "{ type filter hook input priority -100; }"
-            fi
-            
-            if ! nft list chain "$chain" filter forward 2>/dev/null; then
-                nft add chain "$chain" filter forward "{ type filter hook forward priority -100; }"
+                nft add chain "$chain" filter input "{ type filter hook prerouting priority -160; }"
             fi
         done
     elif [ -n "$iptables_ver" ]; then
         ipset create timecontrol_blacklist hash:net 2>/dev/null || ipset flush timecontrol_blacklist
         ipset create timecontrol_blacklistv6 hash:net family inet6 2>/dev/null || ipset flush timecontrol_blacklistv6
         
-        iptables -C INPUT -m set --match-set timecontrol_blacklist src -j DROP 2>/dev/null || \
-        iptables -I INPUT -m set --match-set timecontrol_blacklist src -j DROP
-        iptables -C FORWARD -m set --match-set timecontrol_blacklist src -j DROP 2>/dev/null || \
-        iptables -I FORWARD -m set --match-set timecontrol_blacklist src -j DROP
+        iptables -t mangle -C PREROUTING -m set --match-set timecontrol_blacklist src -j DROP 2>/dev/null || \
+        iptables -t mangle -I PREROUTING -m set --match-set timecontrol_blacklist src -j DROP
     
-        ip6tables -C INPUT -m set --match-set timecontrol_blacklistv6 src -j DROP 2>/dev/null || \
-        ip6tables -I INPUT -m set --match-set timecontrol_blacklistv6 src -j DROP
-
-        ip6tables -C FORWARD -m set --match-set timecontrol_blacklistv6 src -j DROP 2>/dev/null || \
-        ip6tables -I FORWARD -m set --match-set timecontrol_blacklistv6 src -j DROP
+        ip6tables -t mangle -C PREROUTING -m set --match-set timecontrol_blacklistv6 src -j DROP 2>/dev/null || \
+        ip6tables -t mangle -I PREROUTING -m set --match-set timecontrol_blacklistv6 src -j DROP
     fi
 }
 
@@ -229,8 +217,6 @@ timeadd() {
         nft add element "$table" filter "${list_type}_list" "{ $target }"
         nft add rule "$table" filter input "$daddr" @"${list_type}_list" drop 2>/dev/null
         nft add rule "$table" filter input "$saddr" @"${list_type}_list" drop 2>/dev/null
-        nft add rule "$table" filter forward "$daddr" @"${list_type}_list" drop 2>/dev/null
-        nft add rule "$table" filter forward "$saddr" @"${list_type}_list" drop 2>/dev/null
         dbg "Added $target to $list_type in table $table"
         
     else
@@ -262,8 +248,6 @@ timedel() {
         nft delete element "$table" filter "${list_type}_list" "{ $target }"
         nft delete rule "$table" filter input "$daddr" @"${list_type}_list" 2>/dev/null
         nft delete rule "$table" filter input "$saddr" @"${list_type}_list" 2>/dev/null
-        nft delete rule "$table" filter forward "$daddr" @"${list_type}_list" 2>/dev/null
-        nft delete rule "$table" filter forward "$saddr" @"${list_type}_list" 2>/dev/null
     else
         ipset del "$ipset_name" "$target" 2>/dev/null
         dbg "Removed $target from ipset $ipset_name"

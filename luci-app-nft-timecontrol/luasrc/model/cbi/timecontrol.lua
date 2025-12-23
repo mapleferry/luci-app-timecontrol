@@ -53,14 +53,24 @@ local function get_devices()
     
     -- 辅助函数：尝试获取主机名
     local function get_hostname(ip)
-        -- 方法1: 使用 nslookup
-        local f = io.popen("nslookup "..ip.." 2>/dev/null | grep 'name =' | cut -d'=' -f2 | sed 's/\\.$//'")
+        -- 方法1: 使用 nslookup (兼容 Busybox 和 Bind 格式)
+        local f = io.popen("nslookup "..ip.." 2>/dev/null")
         if f then
-            local name = f:read("*l")
-            f:close()
-            if name and name ~= "" then
-                return name:match("^%s*(.-)%s*$")  -- 去除前后空格
+            for line in f:lines() do
+                -- 尝试匹配 Busybox 格式: Name: MyDevice
+                local name = line:match("Name:%s+(.+)")
+                -- 尝试匹配 Bind 格式: name = MyDevice.
+                if not name then
+                    name = line:match("name%s*=%s*(.+)") 
+                end
+                
+                if name then
+                    f:close()
+                    -- 去除可能的末尾点号(Bind)和空格
+                    return name:gsub("%.$", ""):match("^%s*(.-)%s*$")
+                end
             end
+            f:close()
         end
         
         -- 方法2: 读取 /tmp/dhcp.leases
@@ -98,10 +108,11 @@ local function get_devices()
     end
 
     -- 2. 从ARP表获取设备（使用ip neigh命令）
-    local arp_cmd = io.popen("ip -4 neigh show dev br-lan 2>/dev/null")
+    local arp_cmd = io.popen("ip -4 neigh show 2>/dev/null")
     if arp_cmd then
         for line in arp_cmd:lines() do
-            local ip_addr, mac = line:match("^(%S+)%s+.+%s+(%S+)%s+")
+            -- 明确匹配 lladdr 关键字，避免错误匹配
+            local ip_addr, mac = line:match("^(%S+).+lladdr%s+(%S+)")
             if ip_addr and mac and mac ~= "00:00:00:00:00:00" and not seen_ips[ip_addr] then
                 mac = mac:upper()  -- 统一MAC地址格式
                 local hostname = get_hostname(ip_addr)
