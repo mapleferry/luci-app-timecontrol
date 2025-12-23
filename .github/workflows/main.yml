@@ -43,6 +43,7 @@ jobs:
 
       - name: Upload packages
         uses: ncipollo/release-action@v1
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           allowUpdates: true
