@@ -54,7 +54,8 @@ local function get_devices()
     -- 辅助函数：尝试获取主机名
     local function get_hostname(ip)
         -- 方法1: 使用 nslookup (兼容 Busybox 和 Bind 格式)
-        local f = io.popen("nslookup "..ip.." 2>/dev/null")
+        -- 添加 timeout 1s 防止卡死导致 Interrupted system call
+        local f = io.popen("timeout 1s nslookup "..ip.." 2>/dev/null")
         if f then
             for line in f:lines() do
                 -- 尝试匹配 Busybox 格式: Name: MyDevice
