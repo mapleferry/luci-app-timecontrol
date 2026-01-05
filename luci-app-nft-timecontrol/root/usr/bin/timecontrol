@@ -215,8 +215,25 @@ timeadd() {
     
     if [ -n "$nftables_ver" ]; then
         nft add element "$table" filter "${list_type}_list" "{ $target }"
-        nft add rule "$table" filter input "$daddr" @"${list_type}_list" drop 2>/dev/null
-        nft add rule "$table" filter input "$saddr" @"${list_type}_list" drop 2>/dev/null
+        # 允许访问局域网: Private IPs, Multicast (224.0.0.0/4), Broadcast (255.255.255.255)
+        # 阻止访问 WAN (互联网)
+        if [ "$list_type" = "blacklist" ]; then
+             if [ "$table" = "ip" ]; then
+                 # 排除私有地址、组播和广播地址，其他(即公网流量)全部丢弃
+                 nft add rule "$table" filter input "$saddr" @"${list_type}_list" ip daddr != { 192.168.0.0/16, 172.16.0.0/12, 10.0.0.0/8, 224.0.0.0/4, 255.255.255.255 } drop 2>/dev/null
+             elif [ "$table" = "ip6" ]; then
+                 # IPv6: 允许 Link-Local (fe80::/10) 和 ULA (fc00::/7), 丢弃 Global Unicast (公网)
+                 nft add rule "$table" filter input "$saddr" @"${list_type}_list" ip6 daddr != { fe80::/10, fc00::/7 } drop 2>/dev/null
+             else
+                 # Bridge / fallback
+                 nft add rule "$table" filter input "$daddr" @"${list_type}_list" drop 2>/dev/null
+                 nft add rule "$table" filter input "$saddr" @"${list_type}_list" drop 2>/dev/null
+             fi
+        else
+            # Whitelist 模式保持默认
+            nft add rule "$table" filter input "$daddr" @"${list_type}_list" drop 2>/dev/null
+            nft add rule "$table" filter input "$saddr" @"${list_type}_list" drop 2>/dev/null
+        fi
         dbg "Added $target to $list_type in table $table"
         
     else
@@ -224,6 +241,7 @@ timeadd() {
             ipset add "$ipset_name" "$target"
             dbg "Added $target to ipset $ipset_name"
         fi
+        # iptables 暂未适配 "允许LAN但禁止WAN" 的精细化控制，维持原状 (全阻断) 或建议使用 nftables
     fi
 }
 

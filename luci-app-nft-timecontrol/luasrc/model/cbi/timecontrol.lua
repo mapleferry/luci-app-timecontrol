@@ -54,10 +54,10 @@ local function get_devices()
     -- 辅助函数：尝试获取主机名
     local function get_hostname(ip)
         -- 方法1: 使用 nslookup (兼容 Busybox 和 Bind 格式)
-        -- 添加 timeout 1s 防止卡死导致 Interrupted system call
-        local f = io.popen("timeout 1s nslookup "..ip.." 2>/dev/null")
-        if f then
-            for line in f:lines() do
+        -- 使用 luci.sys.exec 替代 io.popen 以避免 Interrupted system call
+        local output = sys.exec("timeout 1s nslookup " .. ip .. " 2>/dev/null")
+        if output then
+            for line in output:gmatch("[^\r\n]+") do
                 -- 尝试匹配 Busybox 格式: Name: MyDevice
                 local name = line:match("Name:%s+(.+)")
                 -- 尝试匹配 Bind 格式: name = MyDevice.
@@ -66,12 +66,10 @@ local function get_devices()
                 end
                 
                 if name then
-                    f:close()
                     -- 去除可能的末尾点号(Bind)和空格
                     return name:gsub("%.$", ""):match("^%s*(.-)%s*$")
                 end
             end
-            f:close()
         end
         
         -- 方法2: 读取 /tmp/dhcp.leases
