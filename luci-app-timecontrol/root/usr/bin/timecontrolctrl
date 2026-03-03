@@ -6,8 +6,6 @@ NAME=timecontrol
 IDLIST="/var/$NAME.idlist"
 TMPID="/var/$NAME.tmpid"
 
-idlist=$(uci show $NAME | grep "enable='1'" | grep "device" | grep -oE '\[.*?\]' | grep -o '[0-9]')
-
 config_get_type() {
 	local ret=$(uci -q get "${NAME}.${1}")
 	echo "${ret:=$2}"
@@ -84,6 +82,7 @@ update_device_status() {
 
 process_devices() {
     [ -s $IDLIST ] || touch $IDLIST
+    idlist=$(uci show $NAME 2>/dev/null | grep "enable='1'" | grep "device" | grep -oE '\[.*?\]' | grep -oE '[0-9]+')
 
     for id in $idlist; do
         if check_device $id; then
@@ -95,6 +94,11 @@ process_devices() {
                 update_device_status $id "del"
             fi
         fi
+    done
+
+    # 移除已禁用设备（不在 idlist 中）
+    for id in $(cat $IDLIST 2>/dev/null | sed 's/!//g'); do
+        case " $idlist " in *" $id "*) ;; *) update_device_status $id "del" ;; esac
     done
 
     cat $IDLIST | sort | uniq > $TMPID

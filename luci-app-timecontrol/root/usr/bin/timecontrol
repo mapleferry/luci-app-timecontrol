@@ -392,7 +392,7 @@ nft_rule_exists() {
 }
 
 stop_timecontrol() {
-    remove_tcp_reset
+    [ -n "$nftables_ver" ] && nft delete table inet timecontrol 2>/dev/null || true
     if [ -n "$nftables_ver" ]; then
         for chain in "ip" "bridge" "ip6"; do
             if nft_table_exists "$chain filter"; then
@@ -583,7 +583,16 @@ timeadd() {
                 esac
                 ;;
             "mac")
-                ipset add "$ipset_name" "$value" 2>/dev/null || true
+                # iptables ipset hash:net 不支持MAC，需从ARP表解析为IP
+                if [ -f "/proc/net/arp" ]; then
+                    local ip_addr=$(grep -i "${value}" /proc/net/arp 2>/dev/null | awk '$4!="0x0" {print $1}' | head -1)
+                    if [ -n "${ip_addr}" ]; then
+                        ipset add "$ipset_name" "${ip_addr}" 2>/dev/null || true
+                        dbg "MAC ${value} 解析为IP ${ip_addr} 已加入控制"
+                    else
+                        dbg "MAC ${value} 未在ARP表中找到，设备可能离线"
+                    fi
+                fi
                 ;;
         esac
         dbg "Added $target to ipset $ipset_name"
@@ -629,7 +638,12 @@ timedel() {
         dbg "Removed $target_val from ${list_type}_list in table $table"
     else
         IFS=':' read -r type subtype value <<< "$parsed_result"
-        ipset del "$ipset_name" "$value" 2>/dev/null || true
+        if [ "$type" = "mac" ] && [ -f "/proc/net/arp" ]; then
+            local ip_addr=$(grep -i "${value}" /proc/net/arp 2>/dev/null | awk '$4!="0x0" {print $1}' | head -1)
+            [ -n "${ip_addr}" ] && ipset del "timecontrol_blacklist" "${ip_addr}" 2>/dev/null || true
+        else
+            ipset del "$ipset_name" "$value" 2>/dev/null || true
+        fi
         dbg "Removed $target from ipset $ipset_name"
     fi
 }
@@ -780,7 +794,7 @@ case "$crrun" in
         stop_timecontrol
         echo -e "\n====== 启动时间控制 ======" > /var/log/timecontrol.log
 	touch  $IDLIST
-        idlist=$(uci show $NAME | grep "enable='1'" | grep "device" | grep -oE '\[.*?\]' | grep -o '[0-9]' | sed -e 's/^/!/g' -e 's/$/!/g' > "$IDLIST"; cat "$IDLIST" | sed -e 's/!//g')
+        idlist=$(uci show $NAME | grep "enable='1'" | grep "device" | grep -oE '\[.*?\]' | grep -oE '[0-9]+' | sed -e 's/^/!/g' -e 's/$/!/g' > "$IDLIST"; cat "$IDLIST" | sed -e 's/!//g')
         init_timecontrol
         for list in $(echo "$idlist" | sed -e 's/!//g'); do
             if check_list "$list"; then

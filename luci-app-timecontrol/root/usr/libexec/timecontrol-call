@@ -5,7 +5,7 @@
 
 logfile="/var/log/timecontrol.log"
 lang=$(uci get luci.main.lang 2>/dev/null)
-if [ -z "$lang" ] || [[ "$lang" == "auto" ]]; then
+if [ -z "$lang" ] || [ "$lang" = "auto" ]; then
 	lang=$(echo "${LANG:-${LANGUAGE:-${LC_ALL:-${LC_MESSAGES:-zh_cn}}}}" | awk -F'[ .@]' '{print tolower($1)}' | sed 's/-/_/' 2>/dev/null)
 fi
 
@@ -20,7 +20,7 @@ LUA
 	lua -e "$lua_script"
 }
 
-if [ "$1" == "clear_log" ]; then
+if [ "$1" = "clear_log" ]; then
 	# 清空日志
 	>"${logfile}"
 
