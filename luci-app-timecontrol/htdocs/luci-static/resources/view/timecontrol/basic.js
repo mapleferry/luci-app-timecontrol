@@ -245,17 +245,9 @@ return view.extend({
         o.default = '00:00';
         o.rmempty = false;
 
-        o = s.option(form.ListValue, 'week', _('Week Day (1~7)'));
-        o.value('0', _('Everyday'));
-        o.value('1', _('Monday'));
-        o.value('2', _('Tuesday'));
-        o.value('3', _('Wednesday'));
-        o.value('4', _('Thursday'));
-        o.value('5', _('Friday'));
-        o.value('6', _('Saturday'));
-        o.value('7', _('Sunday'));
-        o.value('1,2,3,4,5', _('Workday'));
-        o.value('6,7', _('Rest Day'));
+        o = s.option(form.Value, 'week', _('Week Day (1~7)'),
+            _('0=Everyday, 1=Mon~7=Sun. Custom: comma-separated like 1,3,5 for Mon/Wed/Fri'));
+        o.placeholder = '0 or 1,2,3,5';
         o.default = '0';
         o.rmempty = false;
         return m.render();

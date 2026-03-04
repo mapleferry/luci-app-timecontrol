@@ -508,6 +508,8 @@ init_timecontrol() {
 
 timeadd() {
     local id=$1
+    local enable=$(config_t_get device enable "$id" "0")
+    [ "$enable" != "1" ] && return
     local target=$(config_t_get device mac "$id")
     [ -z "$target" ] && return
     
